@@ -1,0 +1,115 @@
+{
+  "success": true,
+  "website": "https://fastapi.tiangolo.com/",
+  "brand": {
+    "name": "FastAPI",
+    "category": "Python web framework",
+    "summary": "High-performance, easy-to-learn framework for building APIs",
+    "evidence_ids": [
+      "page-3",
+      "page-4",
+      "page-5"
+    ]
+  },
+  "analysis": {
+    "competitor_analysis": {
+      "status": "reviewed_sources",
+      "competitors": [
+        {
+          "name": "Django",
+          "strength": "Includes an ORM and generated admin interface.",
+          "positioning": "Consider for database-backed applications where the built-in administration tools matter.",
+          "source_url": "https://docs.djangoproject.com/en/stable/intro/overview/"
+        },
+        {
+          "name": "Flask",
+          "strength": "Provides a lightweight WSGI framework.",
+          "positioning": "Consider when the project calls for a small WSGI foundation and separately chosen extensions.",
+          "source_url": "https://flask.palletsprojects.com/en/stable/"
+        },
+        {
+          "name": "Litestar",
+          "strength": "Provides an ASGI framework with dependency injection and OpenAPI support.",
+          "positioning": "Consider as an ASGI API alternative when evaluating framework conventions and integrations.",
+          "source_url": "https://docs.litestar.dev/latest/"
+        }
+      ],
+      "note": "These are framework alternatives, compared from their own documentation. No benchmark or market ranking was performed."
+    },
+    "target_search_queries": [
+      {
+        "query": "FastAPI framework for building APIs",
+        "intent": "learn about FastAPI features and usage",
+        "audience": "software developers",
+        "platform": "Google"
+      },
+      {
+        "query": "FastAPI community and support",
+        "intent": "join FastAPI community and get support",
+        "audience": "FastAPI users and developers",
+        "platform": "Facebook"
+      },
+      {
+        "query": "FastAPI development and deployment",
+        "intent": "learn about FastAPI development and deployment",
+        "audience": "software developers and entrepreneurs",
+        "platform": "Instagram"
+      },
+      {
+        "query": "FastAPI job opportunities and career development",
+        "intent": "find job opportunities and career development related to FastAPI",
+        "audience": "software developers and professionals",
+        "platform": "LinkedIn"
+      },
+      {
+        "query": "FastAPI tutorials and guides",
+        "intent": "find tutorials and guides for learning FastAPI",
+        "audience": "software developers and beginners",
+        "platform": "X"
+      }
+    ],
+    "seo_improvements": {
+      "primary_keyword": "FastAPI",
+      "secondary_keywords": [
+        "Python web framework",
+        "API development",
+        "high-performance framework"
+      ],
+      "recommended_title": "FastAPI: High-Performance Python Web Framework for Building APIs",
+      "meta_description": "FastAPI is a high-performance, easy-to-learn framework for building APIs. Learn more about its features and usage.",
+      "supporting_content": [
+        "page-3",
+        "page-4",
+        "page-5"
+      ]
+    },
+    "top_services": [],
+    "target_audience": {
+      "primary": [
+        "software developers",
+        "entrepreneurs"
+      ],
+      "secondary": [
+        "FastAPI users and developers",
+        "software developers and professionals",
+        "software developers and beginners"
+      ],
+      "customer_needs": [
+        "easy-to-learn and high-performance framework for building APIs"
+      ]
+    }
+  },
+  "evidence": {
+    "page-title": "FastAPI - FastAPI ...",
+    "page-3": "APIs: OpenAPI (previously ...",
+    "page-4": "REST server that ...",
+    "page-5": "— Deon Pillsbury, ...",
+    "page-21": "form fields and ...",
+    "page-23": "team behind FastAPI ...",
+    "page-27": "ORJSONResponse . ujson ..."
+  },
+  "warnings": [
+    "Omitted 1 service claim(s) because the cited evidence did not contain the quote."
+  ],
+  "interpretation": "Search queries, SEO copy, and audience segments are suggestions. No search volume was measured."
+}

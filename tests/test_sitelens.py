@@ -132,3 +132,76 @@ def test_endpoint_returns_five_sections_and_reviewed_peers(monkeypatch):
     assert report["warnings"] == []
     assert report["evidence"]["page-1"].startswith("Website design")
     assert no_peers.json()["analysis"]["competitor_analysis"]["status"] == "insufficient_evidence"
+
+
+def test_browser_assets_and_recorded_example_do_not_need_a_key(monkeypatch):
+    monkeypatch.setenv("SITELENS_PROVIDER", "gemini")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with TestClient(app) as client:
+        page = client.get("/")
+        assert page.status_code == 200
+        assert "View example report" in page.text
+        assert "default-src 'self'" in page.headers["content-security-policy"]
+        assert client.get("/assets/site.js").status_code == 200
+        assert client.get("/assets/site.css").status_code == 200
+        assert client.get("/example-report").json()["brand"]["name"] == "FastAPI"
+        live = client.post("/link-analysis", json={"url": "https://fastapi.tiangolo.com/"})
+    assert live.status_code == 503
+    assert "example report" in live.json()["detail"]
+
+
+def test_gemini_builds_a_report_without_ollama(monkeypatch):
+    monkeypatch.setenv("SITELENS_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "fixture-key")
+    monkeypatch.setattr("app.main.fetch_page", lambda url: FetchedPage(url, HTML))
+    real_client = httpx.Client
+    calls = []
+
+    def fake_gemini(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "generativelanguage.googleapis.com"
+        assert request.headers["x-goog-api-key"] == "fixture-key"
+        calls.append(request.url.path)
+        payload = json.loads(request.content)
+        if request.url.path.endswith(":batchEmbedContents"):
+            assert payload["requests"][0]["content"]["parts"][0]["text"].startswith("task: search result")
+            assert len(payload["requests"]) == 2
+            return httpx.Response(200, json={"embeddings": [{"values": [1.0, 0.0]}] * 2})
+        assert payload["generationConfig"]["responseJsonSchema"]["type"] == "object"
+        assert "page-1" in payload["contents"][0]["parts"][0]["text"]
+        return httpx.Response(200, json={"candidates": [{
+            "finishReason": "STOP",
+            "content": {"parts": [{"text": "ignored", "thought": True}, {"text": json.dumps(draft_response())}]},
+        }]})
+
+    monkeypatch.setattr("app.main.httpx.Client", lambda **kwargs: real_client(
+        transport=httpx.MockTransport(fake_gemini), **kwargs,
+    ))
+    with TestClient(app) as client:
+        result = client.post("/link-analysis", json={"url": "https://school.example/"})
+    assert result.status_code == 200
+    assert [call.split(":")[-1] for call in calls] == ["batchEmbedContents", "generateContent"]
+    assert result.json()["analysis"]["top_services"][0]["name"] == "Web design"
+    assert "fixture-key" not in result.text
+
+
+def test_gemini_quota_error_keeps_the_example_available(monkeypatch):
+    monkeypatch.setenv("SITELENS_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "fixture-key")
+    monkeypatch.setattr("app.main.fetch_page", lambda url: FetchedPage(url, HTML))
+    real_client = httpx.Client
+    calls = []
+
+    def quota_exhausted(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(429)
+
+    monkeypatch.setattr("app.main.httpx.Client", lambda **kwargs: real_client(
+        transport=httpx.MockTransport(quota_exhausted), **kwargs,
+    ))
+    with TestClient(app) as client:
+        for _ in range(2):
+            response = client.post("/link-analysis", json={"url": "https://school.example/"})
+            assert response.status_code == 429
+            assert "quota" in response.json()["detail"]
+        assert client.get("/example-report").status_code == 200
+    assert len(calls) == 2

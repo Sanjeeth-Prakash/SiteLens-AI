@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Analyze a public webpage and see what the site says, where it could improve, and the evidence behind the report.">
+  <title>SiteLens AI · Website analysis</title>
+  <link rel="stylesheet" href="/assets/site.css">
+  <script src="/assets/site.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to analysis</a>
+  <header class="site-header">
+    <div class="shell header-content">
+      <a class="wordmark" href="/" aria-label="SiteLens AI home"><span class="mark" aria-hidden="true"></span>SiteLens <span class="wordmark-ai">AI</span></a>
+      <a class="api-link" href="/docs">API docs</a>
+    </div>
+  </header>
+  <main class="shell" id="main">
+    <section class="hero" aria-labelledby="main-title">
+      <h1 id="main-title">A clearer view<br class="wide-break"> of any webpage<span>.</span></h1>
+      <p>See what a site offers, who it’s for, and what could make it easier to find. Follow the evidence back to the source.</p>
+    </section>
+    <section class="workspace" aria-label="Website analysis">
+      <form id="analysis-form">
+        <label for="site-url">Website URL</label>
+        <div class="input-row">
+          <input id="site-url" name="url" type="url" placeholder="https://example.com" autocomplete="url" inputmode="url" required>
+          <button class="button primary" id="analyze" type="submit">Analyze page</button>
+        </div>
+        <div class="form-footer">
+          <span>One public page per report</span>
+          <button class="button text-button" id="example" type="button">View example report</button>
+        </div>
+      </form>
+      <p id="status" class="status" role="status" aria-live="polite" hidden></p>
+    </section>
+    <section id="report" class="report" aria-label="Analysis report" hidden></section>
+  </main>
+  <footer class="shell footer">
+    <a href="https://github.com/Sanjeeth-Prakash/SiteLens-AI">GitHub</a>
+  </footer>
+</body>
+</html>

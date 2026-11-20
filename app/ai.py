@@ -1,5 +1,6 @@
-"""Semantic retrieval and schema-constrained generation through local Ollama."""
+"""Semantic retrieval and schema-constrained generation."""
 
+from abc import ABC, abstractmethod
 import json
 import math
 import os
@@ -31,11 +32,15 @@ Keep values concise. Use "Unclear from source" only when the evidence does not i
 
 
 class ModelUnavailable(RuntimeError):
-    """Ollama could not complete the model operation."""
+    """The configured model could not complete the operation."""
+
+
+class ModelRateLimited(RuntimeError):
+    """The hosted model is busy or has reached its quota."""
 
 
 class InvalidModelOutput(RuntimeError):
-    """Ollama returned unusable results."""
+    """The model returned unusable results."""
 
 
 def cosine_similarity(left: list[float], right: list[float]) -> float:
@@ -43,32 +48,18 @@ def cosine_similarity(left: list[float], right: list[float]) -> float:
     return sum(a * b for a, b in zip(left, right, strict=True)) / denominator if denominator else 0.0
 
 
-class Ollama:
-    def __init__(self, client: httpx.Client):
-        self.client = client
-        self.chat_model = os.getenv("SITELENS_CHAT_MODEL", "llama3.1")
-        self.embedding_model = os.getenv("SITELENS_EMBED_MODEL", "all-minilm")
+class AnalysisModel(ABC):
+    @abstractmethod
+    def embed(self, query: str, documents: list[str]) -> list[list[float]]:
+        """Return the query vector followed by vectors in document order."""
 
-    def post(self, path: str, payload: dict) -> dict:
-        try:
-            response = self.client.post(path, json=payload)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise ModelUnavailable("Ollama request failed. Check that Ollama is running and both models are installed.") from exc
-        try:
-            data = response.json()
-            if not isinstance(data, dict):
-                raise ValueError("Expected a JSON object")
-            return data
-        except ValueError as exc:
-            raise InvalidModelOutput("Ollama returned an invalid API response.") from exc
+    @abstractmethod
+    def draft_json(self, evidence: dict[str, str]) -> str:
+        """Return the provider's report draft as JSON text."""
 
     def retrieve(self, passages: dict[str, str]) -> dict[str, str]:
         keys = [key for key in passages if key != "page-title"]
-        vectors = self.post("/api/embed", {
-            "model": self.embedding_model,
-            "input": [RETRIEVAL_QUERY, *(passages[key] for key in keys)],
-        }).get("embeddings")
+        vectors = self.embed(RETRIEVAL_QUERY, [passages[key] for key in keys])
         try:
             if not isinstance(vectors, list) or len(vectors) != len(keys) + 1:
                 raise ValueError("Unexpected embedding count")
@@ -79,24 +70,14 @@ class Ollama:
                 zip(keys, indexed, strict=True), key=lambda pair: cosine_similarity(query, pair[1]), reverse=True,
             )
         except (TypeError, ValueError, OverflowError) as exc:
-            raise InvalidModelOutput("Ollama returned an unusable embedding batch.") from exc
+            raise InvalidModelOutput("The model returned an unusable embedding batch.") from exc
         selected = {key for key, _ in matches[:6]} | {"page-title"}
         return {key: passage for key, passage in passages.items() if key in selected}
 
     def generate(self, evidence: dict[str, str]) -> tuple[Draft, list[str]]:
-        raw = self.post("/api/chat", {
-            "model": self.chat_model,
-            "stream": False,
-            "format": Draft.model_json_schema(),
-            "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 1600},
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps({"website_evidence": evidence}, ensure_ascii=False)},
-            ],
-        })
         try:
-            draft = Draft.model_validate_json(raw["message"]["content"])
-        except (KeyError, TypeError, ValidationError) as exc:
+            draft = Draft.model_validate_json(self.draft_json(evidence))
+        except ValidationError as exc:
             raise InvalidModelOutput("The model response did not match the analysis schema.") from exc
         if set(draft.brand.evidence_ids) - evidence.keys():
             raise InvalidModelOutput("The brand referenced a passage outside the retrieved evidence.")
@@ -108,3 +89,60 @@ class Ollama:
         omitted = len(draft.top_services) - len(verified_services)
         warnings = [f"Omitted {omitted} service claim(s) because the cited evidence did not contain the quote."] if omitted else []
         return draft.model_copy(update={"top_services": verified_services}), warnings
+
+
+class ModelHTTPClient(AnalysisModel):
+    label: str
+    unavailable: str
+
+    def __init__(self, client: httpx.Client):
+        self.client = client
+
+    def post(self, path: str, payload: dict) -> dict:
+        try:
+            response = self.client.post(path, json=payload)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429:
+                raise ModelRateLimited("The AI provider is busy or its quota has been reached. Try the example report.") from exc
+            raise ModelUnavailable(self.unavailable) from exc
+        except httpx.RequestError as exc:
+            raise ModelUnavailable(self.unavailable) from exc
+        try:
+            data = response.json()
+            if not isinstance(data, dict):
+                raise ValueError("Expected a JSON object")
+            return data
+        except ValueError as exc:
+            raise InvalidModelOutput(f"{self.label} returned an invalid API response.") from exc
+
+
+class Ollama(ModelHTTPClient):
+    label = "Ollama"
+    unavailable = "Ollama request failed. Check that Ollama is running and both models are installed."
+
+    def __init__(self, client: httpx.Client):
+        super().__init__(client)
+        self.chat_model = os.getenv("SITELENS_CHAT_MODEL", "llama3.1")
+        self.embedding_model = os.getenv("SITELENS_EMBED_MODEL", "all-minilm")
+
+    def embed(self, query: str, documents: list[str]) -> list[list[float]]:
+        return self.post("/api/embed", {
+            "model": self.embedding_model, "input": [query, *documents],
+        }).get("embeddings", [])
+
+    def draft_json(self, evidence: dict[str, str]) -> str:
+        raw = self.post("/api/chat", {
+            "model": self.chat_model,
+            "stream": False,
+            "format": Draft.model_json_schema(),
+            "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 1600},
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps({"website_evidence": evidence}, ensure_ascii=False)},
+            ],
+        })
+        try:
+            return raw["message"]["content"]
+        except (KeyError, TypeError) as exc:
+            raise InvalidModelOutput("Ollama did not return a report draft.") from exc

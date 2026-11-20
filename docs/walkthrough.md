@@ -4,7 +4,9 @@ Follow a request for the FastAPI homepage through the code.
 
 ## 1. Build a small evidence collection
 
-`fetch_page()` obtains HTML. `extract_passages()` removes elements like scripts and navigation, then slices the cleaned text into chunks of up to 90 words. Each chunk gets an ID such as `page-3`. The result is a dictionary mapping IDs to original text. These IDs let the final report point back to readable evidence.
+`fetch_page()` obtains HTML from a public URL. It resolves the hostname, checks that all returned IP addresses are public, and connects to one of those checked addresses. Each redirect repeats those steps. The API exposes the final URL as `source_url` so the evidence stays tied to the page actually downloaded.
+
+`extract_passages()` removes elements like scripts and navigation, then slices the cleaned text into chunks of up to 90 words. Each chunk gets an ID such as `page-3`. The result is a dictionary mapping IDs to original text. These IDs let the final report point back to readable evidence.
 
 Your original Local RAG Assistant ranked whole files. SiteLens ranks passages within one page. If a paragraph describing request validation is buried in a long page, the embedding for that paragraph can capture the topic more directly than an embedding for the entire page.
 

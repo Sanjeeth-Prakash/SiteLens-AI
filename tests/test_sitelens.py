@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.ai import InvalidModelOutput, Ollama
 from app.main import app
-from app.website import URLRejected, WebsiteUnavailable, extract_passages, fetch_page
+from app.website import FetchedPage, URLRejected, WebsiteUnavailable, extract_passages, fetch_page
 
 HTML = b"""
 <title>Example Web Co</title>
@@ -47,9 +47,10 @@ def test_extracts_metadata_and_discards_boilerplate():
 
 
 @pytest.mark.parametrize("url", [
-    "http://www.python.org/",
     "https://127.0.0.1/",
-    "https://www.python.org.evil.test/",
+    "http://169.254.169.254/",
+    "https://[::1]/",
+    "http://intranet.local/",
     "https://www.python.org:8443/",
     "https://user@www.python.org/",
 ])
@@ -100,7 +101,10 @@ def test_omits_service_when_its_quote_is_absent(monkeypatch):
 
 
 def test_endpoint_returns_five_sections_and_reviewed_peers(monkeypatch):
-    monkeypatch.setattr("app.main.fetch_page", lambda url: HTML)
+    monkeypatch.setattr(
+        "app.main.fetch_page",
+        lambda url: FetchedPage(url.replace("http://", "https://"), HTML),
+    )
 
     def post(self, path, payload):
         if path == "/api/embed":
@@ -111,12 +115,14 @@ def test_endpoint_returns_five_sections_and_reviewed_peers(monkeypatch):
 
     monkeypatch.setattr(Ollama, "post", post)
     with TestClient(app) as client:
-        result = client.post("/link-analysis", json={"url": "https://fastapi.tiangolo.com/"})
+        result = client.post("/link-analysis", json={"url": "http://fastapi.tiangolo.com/"})
         assert result.status_code == 200
         invalid = client.post("/link-analysis", json={"url": "nope"})
         assert invalid.status_code == 422
         no_peers = client.post("/link-analysis", json={"url": "https://www.python.org/"})
     report = result.json()
+    assert report["website"] == "http://fastapi.tiangolo.com/"
+    assert report["source_url"] == "https://fastapi.tiangolo.com/"
     assert set(report["analysis"]) == {
         "competitor_analysis", "target_search_queries", "seo_improvements", "top_services", "target_audience",
     }

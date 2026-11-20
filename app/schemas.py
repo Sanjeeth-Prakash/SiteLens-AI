@@ -97,6 +97,7 @@ class Analysis(BaseModel):
 class LinkResponse(BaseModel):
     success: Literal[True] = True
     website: HttpUrl
+    source_url: HttpUrl
     brand: Brand
     analysis: Analysis
     evidence: dict[str, str]

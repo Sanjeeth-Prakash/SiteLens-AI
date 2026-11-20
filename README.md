@@ -1,30 +1,51 @@
 # SiteLens AI
 
-SiteLens turns one public webpage into a structured business and SEO brief with clickable evidence. The FastAPI app serves both the browser interface and the analysis endpoint. Run the AI with local Ollama or a hosted Gemini API key.
+SiteLens turns a public webpage into a business and SEO report with clickable evidence. Paste a URL to see what the page offers, who it might serve, and how it could be easier to find. FastAPI serves the browser interface and API, and Gemini handles embeddings and report generation in hosted mode.
 
-## Run it
+**See a finished report.** Open the [recorded example](examples/response.json), or run the browser interface and click **View example report**. The example works without a model call or an API key.
 
-Install Python 3.11+ and start Ollama. From the project directory in PowerShell:
+## Run SiteLens with Gemini
+
+Install Python 3.11. From the project directory in PowerShell, create the virtual environment and install the dependencies:
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-ollama pull all-minilm
-ollama pull llama3.1
+```
+
+Get a free-tier key in [Google AI Studio](https://aistudio.google.com/apikey). Click **Copy** on the key, then run these commands in the same PowerShell terminal. The clipboard command sets the key for this terminal without displaying it.
+
+```powershell
+$env:SITELENS_PROVIDER = 'gemini'
+$env:GEMINI_API_KEY = (Get-Clipboard -Raw).Trim()
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 4000
 ```
 
-Open [SiteLens](http://127.0.0.1:4000/) and paste a public URL. **View example report** opens a recorded analysis without a model call. Use the [interactive API docs](http://127.0.0.1:4000/docs) or a second terminal to call the API directly:
+Open [SiteLens](http://127.0.0.1:4000/) and try `https://konguschoolparamathivelur.com/`. Click a citation to see its source passage, or download the full report as JSON. To view only the recorded example, run the Uvicorn command by itself and click **View example report**.
+
+Gemini mode defaults to `gemini-embedding-2` and `gemini-3.5-flash-lite`. Set `SITELENS_GEMINI_EMBED_MODEL` or `SITELENS_GEMINI_CHAT_MODEL` to change them. Gemini receives the extracted public webpage text used for retrieval and generation. [Google's free-tier data terms](https://aistudio.google.com/docs/pricing)
+
+## Deploy a free Render demo
+
+Visitors open the hosted URL and paste a website. The service owner configures the Gemini key and quota store once in Render.
+
+1. Create a **Free Redis** database in the [Upstash console](https://console.upstash.com/). Copy its **HTTPS REST URL** and **read/write REST token**.
+2. In the [Render dashboard](https://dashboard.render.com/), choose **New → Blueprint**, connect this repository, and select `main`. The [Blueprint](render.yaml) selects a free Python service and configures the build, start command, and health check.
+3. Enter `GEMINI_API_KEY`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` in Render's private settings. Deploy the Blueprint and verify the recorded example, a live analysis, and rejection of private URLs. Restrict fetch-worker egress for a public deployment.
+
+The Blueprint sets a shared cap of **10 live analyses per UTC day**. A Redis counter keeps the count across app restarts. SiteLens reserves a slot after extracting the page and before calling the model. Failed model calls still consume their reserved slots. At the cap, the API returns `429` with `Retry-After`. If Redis is unavailable, it returns `503`. The recorded example stays available in both cases.
+
+Local runs skip the shared cap when `SITELENS_DAILY_ANALYSIS_LIMIT` is unset. To try the cap locally, set a positive limit and both Upstash environment variables.
+
+## What a report contains
+
+The report includes a brand profile, five platform-specific search suggestions, SEO recommendations, evidenced services, suggested audiences, and competitor comparisons where reviewed sources exist. The recorded FastAPI report includes three curated alternatives. Other pages report insufficient competitor evidence. Search and SEO recommendations are suggestions.
+
+The API exposes both `website`, the submitted URL, and `source_url`, the page actually read after redirects. View the [interactive API docs](http://127.0.0.1:4000/docs) while the server is running, or request a report from a second terminal:
 
 ```powershell
-Invoke-RestMethod -Uri 'http://127.0.0.1:4000/link-analysis' -Method Post -ContentType 'application/json' -Body '{"url":"https://fastapi.tiangolo.com/"}' | ConvertTo-Json -Depth 12
+Invoke-RestMethod -Uri 'http://127.0.0.1:4000/link-analysis' -Method Post -ContentType 'application/json' -Body '{"url":"https://konguschoolparamathivelur.com/"}' | ConvertTo-Json -Depth 12
 ```
-
-The report includes a brand profile with source IDs, a competitor comparison, five platform-specific query suggestions, SEO recommendations, evidenced services, and suggested audiences. The FastAPI homepage demo has three manually reviewed peer sources. Other supported pages report insufficient competitor evidence. SEO and queries are editorial suggestions. The app has no search-volume data.
-
-The response includes both `website`, the requested URL, and `source_url`, the public page fetched after redirects. The evidence comes from that final page.
-
-See the [recorded live response](examples/response.json). Its text excerpts are shortened for display. The local Uvicorn and Ollama smoke test returned HTTP 200 in 12.54 seconds for this page. That is one end-to-end timing on the development machine.
 
 ## Code walkthrough
 
@@ -32,7 +53,7 @@ See the [recorded live response](examples/response.json). Its text excerpts are 
 | --- | --- |
 | [`main.py`](app/main.py) | FastAPI receives and validates the request, calls the pipeline, and translates failures into HTTP status codes. |
 | [`website.py`](app/website.py) | Checks public destinations and redirects, fetches bounded HTML, removes page boilerplate, and assigns IDs to text passages. |
-| [`ai.py`](app/ai.py) | Embeds the analysis goal and passages in one Ollama batch, ranks them with cosine similarity, and asks Llama to generate a typed report from the selected evidence. |
+| [`ai.py`](app/ai.py) | Ranks passages by cosine similarity, validates generated reports, and checks citations and quotes. It also includes the local Ollama adapter. |
 | [`gemini.py`](app/gemini.py) | Uses Google's hosted embedding and structured generation endpoints while reusing the same retrieval and evidence checks. |
 | [`quota.py`](app/quota.py) | Reserves a live analysis in a shared daily counter before the model is called. |
 | [`schemas.py`](app/schemas.py) | Defines the public response and model output. The model fills five named query slots. Python maps those slots to the API's platform labels. |
@@ -41,40 +62,27 @@ See the [recorded live response](examples/response.json). Its text excerpts are 
 
 See the [worked learning guide](docs/walkthrough.md) and the [model evaluation notes](docs/model-comparison.md).
 
-## Tests and configuration
+## Tests
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The automated suite uses fixture HTML, fake network responses, and simulated model replies. It checks public redirects, blocked destinations, IP pinning, HTML size and encoding, extraction, retrieval ordering, citation validation, platform coverage, and the five-section API response. The tests run without Ollama or outbound network access.
+The automated suite uses fixture HTML, fake network responses, and simulated model replies. It checks redirect validation, IP pinning, extraction, ranking, citations, report structure, provider errors, and quota enforcement. It runs without model credentials or outbound network access.
 
-Change models with `SITELENS_CHAT_MODEL` and `SITELENS_EMBED_MODEL`. The model server is local at port 11434. A missing or failing Ollama service returns `503`. A failed page fetch or invalid model response returns `502`. A rejected URL returns `422`.
+## Optional local mode with Ollama
 
-## Hosted model mode
-
-Get a free-tier key in [Google AI Studio](https://aistudio.google.com/apikey). Keep the key in the server environment. For a local PowerShell session:
+For local model inference, start Ollama, then run:
 
 ```powershell
-$env:SITELENS_PROVIDER = 'gemini'
-$env:GEMINI_API_KEY = [System.Net.NetworkCredential]::new('', (Read-Host 'Gemini API key' -AsSecureString)).Password
+ollama pull all-minilm
+ollama pull llama3.1
+$env:SITELENS_PROVIDER = 'ollama'
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 4000
 ```
 
-Gemini mode uses `gemini-embedding-2` and `gemini-3.5-flash-lite` by default. Override them with `SITELENS_GEMINI_EMBED_MODEL` and `SITELENS_GEMINI_CHAT_MODEL` if needed. It allows one live analysis at a time per process and returns `429` when busy or when the provider rejects a request for quota reasons. Visitors can still view the recorded example. Gemini receives the public webpage excerpts used for retrieval and generation. Consult [Google's free-tier data terms](https://aistudio.google.com/docs/pricing) before enabling cloud analysis.
+Ollama runs on port 11434. Set `SITELENS_CHAT_MODEL` and `SITELENS_EMBED_MODEL` to use different local models.
 
-## Scope and deployment
+## Scope
 
-SiteLens accepts public HTTP and HTTPS URLs on ports 80 and 443. It re-checks every redirect, rejects private and other non-public destinations, connects to a validated IP, and verifies the original hostname's certificate on HTTPS. It follows at most four redirects and limits the downloaded and decoded HTML to 1 MB. Websites that require authentication, block automated fetching, or only render content with JavaScript may return an error or have too little readable text. The report covers one page. Evidence IDs identify retrieved passages, and claim support still needs human evaluation.
-
-Use loopback for local development. This version stores passages and vectors in memory for one request.
-
-### Free Render demo
-
-1. Create a free Redis database in the [Upstash console](https://console.upstash.com/). Copy the HTTPS REST URL and the read/write REST token from its connection settings.
-2. In the [Render dashboard](https://dashboard.render.com/), create a Blueprint from this repository. [`render.yaml`](render.yaml) selects the free Python service, sets the start command and health check, and disables automatic deploys on later commits.
-3. Enter `GEMINI_API_KEY`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` in Render's private environment settings. Before sharing the URL, test a live analysis, the example, and rejection of private URLs. Restrict fetch-worker egress when deploying a public service.
-
-The Blueprint sets one shared cap of **10 live analyses per UTC day**. This is an application setting. Check the Gemini project's actual free quota before choosing a higher limit. The Redis counter survives app restarts, and a slot is reserved after successfully fetching and extracting the page. An attempted model call consumes its slot even if the model fails. When the cap is reached, `POST /link-analysis` returns `429` with `Retry-After`. If Redis is unavailable, live requests return `503`. In both cases the recorded example remains available.
-
-Local runs skip the quota when `SITELENS_DAILY_ANALYSIS_LIMIT` is unset. To test it locally, set a positive limit and supply the two Upstash environment variables. Use a separate Redis database if you want the local counter to be independent of the hosted demo.
+SiteLens analyzes one readable page per request. It checks every HTTP or HTTPS redirect, rejects private destinations, limits downloads and decoded HTML to 1 MB, and follows up to four redirects. Sites that require a login, block automated requests, or render their main content with JavaScript may be unavailable. Citations let readers review the evidence behind claims. Passages and vectors are kept in memory for the duration of the request.

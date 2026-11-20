@@ -12,6 +12,7 @@ from pydantic import HttpUrl
 from app.ai import InvalidModelOutput, ModelRateLimited, ModelUnavailable, Ollama
 from app.competitors import compare_peers
 from app.gemini import GEMINI_API, Gemini
+from app.quota import QuotaReached, QuotaUnavailable, reserve_analysis
 from app.schemas import Analysis, Health, LinkRequest, LinkResponse
 from app.website import URLRejected, WebsiteUnavailable, extract_passages, fetch_page
 
@@ -70,14 +71,17 @@ def analyze_link(payload: LinkRequest) -> LinkResponse:
         with analysis_model() as model:
             page = fetch_page(str(payload.url))
             passages = extract_passages(page.html, page.encoding)
+            reserve_analysis()
             evidence = model.retrieve(passages)
             draft, warnings = model.generate(evidence)
     except URLRejected as exc:
         raise HTTPException(422, str(exc)) from exc
     except WebsiteUnavailable as exc:
         raise HTTPException(502, str(exc)) from exc
-    except ModelUnavailable as exc:
+    except (ModelUnavailable, QuotaUnavailable) as exc:
         raise HTTPException(503, str(exc)) from exc
+    except QuotaReached as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
     except ModelRateLimited as exc:
         raise HTTPException(429, str(exc)) from exc
     except InvalidModelOutput as exc:

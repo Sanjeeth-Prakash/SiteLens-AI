@@ -34,6 +34,7 @@ See the [recorded live response](examples/response.json). Its text excerpts are 
 | [`website.py`](app/website.py) | Checks public destinations and redirects, fetches bounded HTML, removes page boilerplate, and assigns IDs to text passages. |
 | [`ai.py`](app/ai.py) | Embeds the analysis goal and passages in one Ollama batch, ranks them with cosine similarity, and asks Llama to generate a typed report from the selected evidence. |
 | [`gemini.py`](app/gemini.py) | Uses Google's hosted embedding and structured generation endpoints while reusing the same retrieval and evidence checks. |
+| [`quota.py`](app/quota.py) | Reserves a live analysis in a shared daily counter before the model is called. |
 | [`schemas.py`](app/schemas.py) | Defines the public response and model output. The model fills five named query slots. Python maps those slots to the API's platform labels. |
 | [`competitors.py`](app/competitors.py) | Uses reviewed first-party documentation to compare Django, Flask, and Litestar as alternatives to FastAPI. |
 | [`web/`](web/) | Browser interface for submitting a URL, opening evidence, showing a recorded report, and downloading the JSON. |
@@ -66,4 +67,14 @@ Gemini mode uses `gemini-embedding-2` and `gemini-3.5-flash-lite` by default. Ov
 
 SiteLens accepts public HTTP and HTTPS URLs on ports 80 and 443. It re-checks every redirect, rejects private and other non-public destinations, connects to a validated IP, and verifies the original hostname's certificate on HTTPS. It follows at most four redirects and limits the downloaded and decoded HTML to 1 MB. Websites that require authentication, block automated fetching, or only render content with JavaScript may return an error or have too little readable text. The report covers one page. Evidence IDs identify retrieved passages, and claim support still needs human evaluation.
 
-Use loopback for local development. A hosted demo can use one Python web service for both the frontend and API, with `pip install -r requirements.txt` as its build command and `uvicorn app.main:app --host 0.0.0.0 --port $PORT` as its start command. Set the Gemini environment variables in the host's private settings. Before exposing arbitrary URL analysis publicly, put it behind an access or rate policy and run the fetch worker with restricted network egress. This version stores passages and vectors in memory for one request.
+Use loopback for local development. This version stores passages and vectors in memory for one request.
+
+### Free Render demo
+
+1. Create a free Redis database in the [Upstash console](https://console.upstash.com/). Copy the HTTPS REST URL and the read/write REST token from its connection settings.
+2. In the [Render dashboard](https://dashboard.render.com/), create a Blueprint from this repository. [`render.yaml`](render.yaml) selects the free Python service, sets the start command and health check, and disables automatic deploys on later commits.
+3. Enter `GEMINI_API_KEY`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` in Render's private environment settings. Before sharing the URL, test a live analysis, the example, and rejection of private URLs. Restrict fetch-worker egress when deploying a public service.
+
+The Blueprint sets one shared cap of **10 live analyses per UTC day**. This is an application setting. Check the Gemini project's actual free quota before choosing a higher limit. The Redis counter survives app restarts, and a slot is reserved after successfully fetching and extracting the page. An attempted model call consumes its slot even if the model fails. When the cap is reached, `POST /link-analysis` returns `429` with `Retry-After`. If Redis is unavailable, live requests return `503`. In both cases the recorded example remains available.
+
+Local runs skip the quota when `SITELENS_DAILY_ANALYSIS_LIMIT` is unset. To test it locally, set a positive limit and supply the two Upstash environment variables. Use a separate Redis database if you want the local counter to be independent of the hosted demo.

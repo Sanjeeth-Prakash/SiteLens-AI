@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: sitelens-ai
+    runtime: python
+    plan: free
+    branch: main
+    autoDeployTrigger: "off"
+    buildCommand: python -m pip install -r requirements.txt
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: SITELENS_PROVIDER
+        value: gemini
+      - key: SITELENS_DAILY_ANALYSIS_LIMIT
+        value: "10"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false

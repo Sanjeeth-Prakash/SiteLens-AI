@@ -2,7 +2,15 @@
 
 SiteLens turns a public webpage into a business and SEO report with clickable evidence. Paste a URL to see what the page offers, who it might serve, and how it could be easier to find. FastAPI serves the browser interface and API, and Gemini handles embeddings and report generation in hosted mode.
 
-**See a finished report.** Open the [recorded example](examples/response.json), or run the browser interface and click **View example report**. The example works without a model call or an API key.
+**[Try the live demo](https://sitelens-ai.onrender.com/)** · [Recorded JSON example](examples/response.json)
+
+Paste a public URL to run a live analysis, or select **View example report** to open a saved result without using the daily quota.
+
+## Example report
+
+A live SiteLens analysis of [GitHub Features](https://github.com/features), showing the source-linked summary, SEO recommendations, and suggested audience.
+
+![SiteLens analyzing GitHub Features, with the source citation, SEO recommendations, and suggested audiences visible](docs/images/github-report.png)
 
 ## Run SiteLens with Gemini
 
@@ -21,7 +29,7 @@ $env:GEMINI_API_KEY = (Get-Clipboard -Raw).Trim()
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 4000
 ```
 
-Open [SiteLens](http://127.0.0.1:4000/) and try `https://konguschoolparamathivelur.com/`. Click a citation to see its source passage, or download the full report as JSON. To view only the recorded example, run the Uvicorn command by itself and click **View example report**.
+Open [SiteLens](http://127.0.0.1:4000/) and try `https://github.com/features`. Click a citation to see its source passage, or download the full report as JSON. To view only the recorded example, run the Uvicorn command by itself and click **View example report**.
 
 Gemini mode defaults to `gemini-embedding-2` and `gemini-3.5-flash-lite`. Set `SITELENS_GEMINI_EMBED_MODEL` or `SITELENS_GEMINI_CHAT_MODEL` to change them. Gemini receives the extracted public webpage text used for retrieval and generation. [Google's free-tier data terms](https://aistudio.google.com/docs/pricing)
 
@@ -44,7 +52,7 @@ The report includes a brand profile, five platform-specific search suggestions, 
 The API exposes both `website`, the submitted URL, and `source_url`, the page actually read after redirects. View the [interactive API docs](http://127.0.0.1:4000/docs) while the server is running, or request a report from a second terminal:
 
 ```powershell
-Invoke-RestMethod -Uri 'http://127.0.0.1:4000/link-analysis' -Method Post -ContentType 'application/json' -Body '{"url":"https://konguschoolparamathivelur.com/"}' | ConvertTo-Json -Depth 12
+Invoke-RestMethod -Uri 'http://127.0.0.1:4000/link-analysis' -Method Post -ContentType 'application/json' -Body '{"url":"https://github.com/features"}' | ConvertTo-Json -Depth 12
 ```
 
 ## Code walkthrough
